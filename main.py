@@ -96,3 +96,7 @@ def compute_rsi(series, period=14):
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
     rs = gain / loss
     return 100 - (100 / (1 + rs))
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
