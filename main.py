@@ -28,6 +28,17 @@ SYMBOL_MAP = {
     "ltc": "litecoin"
 }
 
+BINANCE_SYMBOL_MAP = {
+    "bitcoin": "BTCUSDT",
+    "ethereum": "ETHUSDT",
+    "cardano": "ADAUSDT",
+    "dogecoin": "DOGEUSDT",
+    "solana": "SOLUSDT",
+    "ripple": "XRPUSDT",
+    "binancecoin": "BNBUSDT",
+    "litecoin": "LTCUSDT"
+}
+
 @app.get("/")
 def root():
     return {"message": "Crypto backend online with Binance API"}
@@ -41,8 +52,10 @@ def resolve_symbol_to_id(symbol: str):
         raise HTTPException(status_code=404, detail="Simbolo non riconosciuto o supportato.")
     return coin_id
 
-def get_binance_klines(symbol: str, interval: str):
-    symbol = symbol.upper() + "USDT"
+def get_binance_klines(coin_id: str, interval: str):
+    symbol = BINANCE_SYMBOL_MAP.get(coin_id.lower())
+    if not symbol:
+        raise HTTPException(status_code=400, detail=f"Coin non supportata da Binance: {coin_id}")
     url = "https://api.binance.com/api/v3/klines"
     params = {"symbol": symbol, "interval": interval, "limit": 100}
     res = requests.get(url, params=params, timeout=10)
@@ -129,3 +142,4 @@ def analyze_multi():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+
