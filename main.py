@@ -106,8 +106,8 @@ def analyze(symbol: str = "bitcoin"):
     df["rsi"] = compute_rsi(df["price"])
     macd_series, signal_series = compute_macd(df["price"])
 
-    df = df.replace([float("inf"), float("-inf")], None)
-    df = df.fillna(value=None)
+    df.replace([float("inf"), float("-inf")], pd.NA, inplace=True)
+    df.fillna(value=pd.NA, inplace=True)
 
     latest = df.iloc[-1]
 
@@ -115,11 +115,11 @@ def analyze(symbol: str = "bitcoin"):
         symbol=symbol,
         date=str(latest["timestamp"]),
         price=round(latest["price"], 4),
-        sma=round(latest["sma"], 4) if latest["sma"] is not None else None,
-        ema=round(latest["ema"], 4) if latest["ema"] is not None else None,
-        bb_upper=round(latest["bb_upper"], 4) if latest["bb_upper"] is not None else None,
-        bb_lower=round(latest["bb_lower"], 4) if latest["bb_lower"] is not None else None,
-        rsi=round(latest["rsi"], 2) if latest["rsi"] is not None else None,
+        sma=round(latest["sma"], 4) if pd.notna(latest["sma"]) else None,
+        ema=round(latest["ema"], 4) if pd.notna(latest["ema"]) else None,
+        bb_upper=round(latest["bb_upper"], 4) if pd.notna(latest["bb_upper"]) else None,
+        bb_lower=round(latest["bb_lower"], 4) if pd.notna(latest["bb_lower"]) else None,
+        rsi=round(latest["rsi"], 2) if pd.notna(latest["rsi"]) else None,
         macd=round(macd_series.iloc[-1], 4) if pd.notna(macd_series.iloc[-1]) else None,
         signal=round(signal_series.iloc[-1], 4) if pd.notna(signal_series.iloc[-1]) else None,
         support=round(df["price"].min(), 2),
@@ -129,28 +129,31 @@ def analyze(symbol: str = "bitcoin"):
         history=History(
             dates=df["timestamp"].dt.strftime("%Y-%m-%d").tolist(),
             prices=df["price"].round(2).tolist(),
-            sma=df["sma"].round(2).fillna(0).tolist(),
-            bb_upper=df["bb_upper"].round(2).fillna(0).tolist(),
-            bb_lower=df["bb_lower"].round(2).fillna(0).tolist()
+            sma=[round(val, 2) if pd.notna(val) else None for val in df["sma"]],
+            bb_upper=[round(val, 2) if pd.notna(val) else None for val in df["bb_upper"]],
+            bb_lower=[round(val, 2) if pd.notna(val) else None for val in df["bb_lower"]]
         )
     )
 
 @app.get("/market-scan")
 def market_scan():
-    url = "https://api.coingecko.com/api/v3/coins/markets"
-    params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 10, "page": 1}
-    res = requests.get(url, params=params, timeout=10)
-    res.raise_for_status()
-    coins = res.json()
-    result = []
-    for coin in coins:
-        result.append({
-            "id": coin["id"],
-            "name": coin["name"],
-            "symbol": coin["symbol"],
-            "volatility_score": round(coin.get("price_change_percentage_24h") or 0, 2)
-        })
-    return {"top_volatile": sorted(result, key=lambda x: -abs(x["volatility_score"]))[:5]}
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/markets"
+        params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 10, "page": 1}
+        res = requests.get(url, params=params, timeout=10)
+        res.raise_for_status()
+        coins = res.json()
+        result = []
+        for coin in coins:
+            result.append({
+                "id": coin["id"],
+                "name": coin["name"],
+                "symbol": coin["symbol"],
+                "volatility_score": round(coin.get("price_change_percentage_24h") or 0, 2)
+            })
+        return {"top_volatile": sorted(result, key=lambda x: -abs(x["volatility_score"]))[:5]}
+    except requests.exceptions.RequestException:
+        raise HTTPException(status_code=503, detail="Limite raggiunto su CoinGecko. Riprova più tardi.")
 
 @app.get("/analyze-multi")
 def analyze_multi():
