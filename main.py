@@ -128,6 +128,28 @@ def analyze(symbol: str = "bitcoin"):
         )
     )
 
+@app.get("/market-scan")
+def market_scan():
+    url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 10, "page": 1}
+    res = requests.get(url, params=params, timeout=10)
+    res.raise_for_status()
+    coins = res.json()
+    result = []
+    for coin in coins:
+        result.append({
+            "id": coin["id"],
+            "name": coin["name"],
+            "symbol": coin["symbol"],
+            "volatility_score": round(coin.get("price_change_percentage_24h") or 0, 2)
+        })
+    return {"top_volatile": sorted(result, key=lambda x: -abs(x["volatility_score"]))[:5]}
+
+@app.get("/analyze-multi")
+def analyze_multi():
+    scan = market_scan()
+    return {"analysis": [analyze(symbol=c["symbol"]) for c in scan.get("top_volatile", [])]}
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
