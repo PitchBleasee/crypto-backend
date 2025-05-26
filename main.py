@@ -6,6 +6,8 @@ import pandas as pd
 import requests
 from functools import lru_cache
 from datetime import datetime
+import os
+import uvicorn
 
 app = FastAPI()
 
@@ -114,3 +116,7 @@ def analyze(symbol: str = "bitcoin"):
             bb_lower=df["bb_lower"].round(2).tolist()
         )
     )
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
