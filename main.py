@@ -70,7 +70,10 @@ def get_market_chart(coin_id: str):
     return res.json()
 
 def resolve_symbol_to_id(symbol: str):
-    coin_id = SYMBOL_MAP.get(symbol.lower())
+    symbol = symbol.lower()
+    if symbol in SYMBOL_MAP.values():
+        return symbol
+    coin_id = SYMBOL_MAP.get(symbol)
     if not coin_id:
         raise HTTPException(status_code=404, detail="Simbolo non riconosciuto o supportato.")
     return coin_id
