@@ -5,6 +5,7 @@ import uvicorn
 from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 app = FastAPI()
 
@@ -18,17 +19,22 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"message": "Crypto backend online with CoinGecko"}
+    return {"message": "Crypto backend online with CoinGecko and error handling"}
 
 @app.get("/analyze")
 def analyze(symbol: str = "bitcoin"):
     try:
-        url = f"https://api.coingecko.com/api/v3/coins/{symbol}/market_chart?vs_currency=usd&days=30"
-        response = requests.get(url)
+        url = f"https://api.coingecko.com/api/v3/coins/{symbol}/market_chart"
+        params = {"vs_currency": "usd", "days": "30"}
+        response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
 
-        df = pd.DataFrame(data["prices"], columns=["timestamp", "price"])
+        prices = data.get("prices", [])
+        if not prices or len(prices) < 10:
+            return JSONResponse(status_code=422, content={"error": "Dati insufficienti da CoinGecko."})
+
+        df = pd.DataFrame(prices, columns=["timestamp", "price"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
         df["price"] = df["price"].astype(float)
 
@@ -63,15 +69,18 @@ def analyze(symbol: str = "bitcoin"):
             }
         }
 
+    except requests.exceptions.RequestException as e:
+        return JSONResponse(status_code=503, content={"error": "Errore nella richiesta a CoinGecko", "details": str(e)})
     except Exception as e:
-        return {"error": str(e)}
+        return JSONResponse(status_code=500, content={"error": "Errore interno nel server", "details": str(e)})
 
 @app.get("/market-scan")
 def market_scan():
     try:
         url = "https://api.coingecko.com/api/v3/coins/markets"
         params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 10, "page": 1}
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
         coins = response.json()
         result = []
         for coin in coins:
@@ -83,7 +92,7 @@ def market_scan():
             })
         return {"top_volatile": sorted(result, key=lambda x: -abs(x["volatility_score"]))[:5]}
     except Exception as e:
-        return {"error": str(e)}
+        return JSONResponse(status_code=500, content={"error": "Errore durante market scan", "details": str(e)})
 
 @app.get("/analyze-multi")
 def analyze_multi():
