@@ -49,12 +49,22 @@ class AnalysisResponse(BaseModel):
     history: History
 
 @lru_cache(maxsize=64)
-def get_market_chart(symbol: str):
-    url = f"https://api.coingecko.com/api/v3/coins/{symbol}/market_chart"
+def get_market_chart(coin_id: str):
+    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
     params = {"vs_currency": "usd", "days": "30"}
     res = requests.get(url, params=params, timeout=10)
     res.raise_for_status()
     return res.json()
+
+def resolve_symbol_to_id(symbol: str):
+    url = "https://api.coingecko.com/api/v3/coins/list"
+    res = requests.get(url, timeout=10)
+    res.raise_for_status()
+    coins = res.json()
+    match = next((coin for coin in coins if coin["symbol"].lower() == symbol.lower()), None)
+    if not match:
+        raise HTTPException(status_code=404, detail="Simbolo non trovato")
+    return match["id"]
 
 def compute_macd(series, span_short=12, span_long=26, span_signal=9):
     ema_short = series.ewm(span=span_short, adjust=False).mean()
@@ -76,7 +86,8 @@ def root():
 
 @app.get("/analyze", response_model=AnalysisResponse)
 def analyze(symbol: str = "bitcoin"):
-    data = get_market_chart(symbol)
+    coin_id = resolve_symbol_to_id(symbol)
+    data = get_market_chart(coin_id)
     prices = data.get("prices", [])
     if not prices or len(prices) < 10:
         raise HTTPException(status_code=422, detail="Dati insufficienti.")
