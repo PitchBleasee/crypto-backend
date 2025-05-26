@@ -1,6 +1,21 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
+import pandas as pd
+import requests
 from functools import lru_cache
+from datetime import datetime
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class History(BaseModel):
     dates: List[str]
@@ -46,12 +61,24 @@ def compute_macd(series, span_short=12, span_long=26, span_signal=9):
     signal = macd.ewm(span=span_signal, adjust=False).mean()
     return macd, signal
 
+def compute_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+@app.get("/")
+def root():
+    return {"message": "Crypto backend online with CoinGecko and error handling"}
+
 @app.get("/analyze", response_model=AnalysisResponse)
 def analyze(symbol: str = "bitcoin"):
     data = get_market_chart(symbol)
     prices = data.get("prices", [])
     if not prices or len(prices) < 10:
         raise HTTPException(status_code=422, detail="Dati insufficienti.")
+
     df = pd.DataFrame(prices, columns=["timestamp", "price"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
     df["price"] = df["price"].astype(float)
@@ -61,7 +88,9 @@ def analyze(symbol: str = "bitcoin"):
     df["bb_lower"] = df["sma"] - 2 * df["price"].rolling(window=7).std()
     df["rsi"] = compute_rsi(df["price"])
     macd_series, signal_series = compute_macd(df["price"])
+
     latest = df.iloc[-1]
+
     return AnalysisResponse(
         symbol=symbol,
         date=str(latest["timestamp"]),
