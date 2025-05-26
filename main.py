@@ -63,11 +63,13 @@ class AnalysisResponse(BaseModel):
 
 @lru_cache(maxsize=64)
 def get_market_chart(coin_id: str):
-    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
-    params = {"vs_currency": "usd", "days": "30"}
+    symbol = coin_id.upper() + "USDT"
+    url = f"https://api.binance.com/api/v3/klines"
+    params = {"symbol": symbol, "interval": "1d", "limit": 30}
     res = requests.get(url, params=params, timeout=10)
     res.raise_for_status()
-    return res.json()
+    raw = res.json()
+    return [{"timestamp": int(candle[0]), "price": float(candle[4])} for candle in raw]
 
 def resolve_symbol_to_id(symbol: str):
     symbol = symbol.lower()
@@ -100,7 +102,7 @@ def root():
 def analyze(symbol: str = "bitcoin"):
     coin_id = resolve_symbol_to_id(symbol)
     data = get_market_chart(coin_id)
-    prices = data.get("prices", [])
+    prices = [[d["timestamp"], d["price"]] for d in data]
     if not prices or len(prices) < 10:
         raise HTTPException(status_code=422, detail="Dati insufficienti.")
 
@@ -171,4 +173,3 @@ def analyze_multi():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
-
