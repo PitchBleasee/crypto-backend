@@ -56,10 +56,14 @@ def get_market_chart(coin_id: str):
     res.raise_for_status()
     return res.json()
 
+@lru_cache(maxsize=128)
 def resolve_symbol_to_id(symbol: str):
     url = "https://api.coingecko.com/api/v3/coins/list"
-    res = requests.get(url, timeout=10)
-    res.raise_for_status()
+    try:
+        res = requests.get(url, timeout=10)
+        res.raise_for_status()
+    except requests.exceptions.HTTPError:
+        raise HTTPException(status_code=503, detail="Limite raggiunto su CoinGecko. Riprova più tardi.")
     coins = res.json()
     match = next((coin for coin in coins if coin["symbol"].lower() == symbol.lower()), None)
     if not match:
@@ -102,19 +106,22 @@ def analyze(symbol: str = "bitcoin"):
     df["rsi"] = compute_rsi(df["price"])
     macd_series, signal_series = compute_macd(df["price"])
 
+    df = df.replace([float("inf"), float("-inf")], None)
+    df = df.fillna(value=None)
+
     latest = df.iloc[-1]
 
     return AnalysisResponse(
         symbol=symbol,
         date=str(latest["timestamp"]),
         price=round(latest["price"], 4),
-        sma=round(latest["sma"], 4),
-        ema=round(latest["ema"], 4),
-        bb_upper=round(latest["bb_upper"], 4),
-        bb_lower=round(latest["bb_lower"], 4),
-        rsi=round(latest["rsi"], 2),
-        macd=round(macd_series.iloc[-1], 4),
-        signal=round(signal_series.iloc[-1], 4),
+        sma=round(latest["sma"], 4) if latest["sma"] is not None else None,
+        ema=round(latest["ema"], 4) if latest["ema"] is not None else None,
+        bb_upper=round(latest["bb_upper"], 4) if latest["bb_upper"] is not None else None,
+        bb_lower=round(latest["bb_lower"], 4) if latest["bb_lower"] is not None else None,
+        rsi=round(latest["rsi"], 2) if latest["rsi"] is not None else None,
+        macd=round(macd_series.iloc[-1], 4) if pd.notna(macd_series.iloc[-1]) else None,
+        signal=round(signal_series.iloc[-1], 4) if pd.notna(signal_series.iloc[-1]) else None,
         support=round(df["price"].min(), 2),
         resistance=round(df["price"].max(), 2),
         gpt_summary="GPT disabilitato.",
@@ -122,9 +129,9 @@ def analyze(symbol: str = "bitcoin"):
         history=History(
             dates=df["timestamp"].dt.strftime("%Y-%m-%d").tolist(),
             prices=df["price"].round(2).tolist(),
-            sma=df["sma"].round(2).tolist(),
-            bb_upper=df["bb_upper"].round(2).tolist(),
-            bb_lower=df["bb_lower"].round(2).tolist()
+            sma=df["sma"].round(2).fillna(0).tolist(),
+            bb_upper=df["bb_upper"].round(2).fillna(0).tolist(),
+            bb_lower=df["bb_lower"].round(2).fillna(0).tolist()
         )
     )
 
