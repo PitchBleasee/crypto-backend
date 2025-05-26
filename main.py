@@ -19,6 +19,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+SYMBOL_MAP = {
+    "btc": "bitcoin",
+    "eth": "ethereum",
+    "ada": "cardano",
+    "xrp": "ripple",
+    "bnb": "binancecoin",
+    "sol": "solana",
+    "dot": "polkadot",
+    "ltc": "litecoin",
+    "doge": "dogecoin",
+    "matic": "matic-network"
+}
+
 class History(BaseModel):
     dates: List[str]
     prices: List[float]
@@ -56,19 +69,11 @@ def get_market_chart(coin_id: str):
     res.raise_for_status()
     return res.json()
 
-@lru_cache(maxsize=128)
 def resolve_symbol_to_id(symbol: str):
-    url = "https://api.coingecko.com/api/v3/coins/list"
-    try:
-        res = requests.get(url, timeout=10)
-        res.raise_for_status()
-    except requests.exceptions.HTTPError:
-        raise HTTPException(status_code=503, detail="Limite raggiunto su CoinGecko. Riprova più tardi.")
-    coins = res.json()
-    match = next((coin for coin in coins if coin["symbol"].lower() == symbol.lower()), None)
-    if not match:
-        raise HTTPException(status_code=404, detail="Simbolo non trovato")
-    return match["id"]
+    coin_id = SYMBOL_MAP.get(symbol.lower())
+    if not coin_id:
+        raise HTTPException(status_code=404, detail="Simbolo non riconosciuto o supportato.")
+    return coin_id
 
 def compute_macd(series, span_short=12, span_long=26, span_signal=9):
     ema_short = series.ewm(span=span_short, adjust=False).mean()
